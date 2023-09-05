@@ -21,11 +21,8 @@ export class Games {
 
 	public async seedGames() {
 		console.log(`--> Seeding games, in ${this.env}`)
-		for (let i = 1; i <= 10; i += 10) {
-			const saveTasks: Promise<void>[] = new Array(10)
-			for (let j = i; j <= i + 10; j++) {
-				saveTasks.push(this.fetchAndCreateGames(j))
-			}
+		for (let i = 0; i < 30; i += 1) {
+			await this.fetchAndCreateGames(i + 1)
 		}
 	}
 
@@ -90,26 +87,45 @@ export class Games {
 		return new DynamoDBClient({})
 	}
 
+	private async fetchAndCreateGames(page: number) {
+		const data = await this.rawgClient.getGames(page) as any[]
+		const games = data
+			.filter(g => g?.genres?.length > 0 ?? false)
+			.map(g => this.generateGameRecord(g))
+		for (let i = 0; i < games.length; i++) {
+			await this.createGames(games[i])
+		}
+	}
+
+	private generateGameRecord(game: any) {
+		const timestamp = new Date().getTime()
+		const camelCasedGame = snakeToCamelCase(game)
+		const gameRecords = []
+		for (let i = 0; i < game.genres.length; i++) {
+			const genreId = game.genres[i].id
+			const gameRecord = {
+				...camelCasedGame,
+				id: `${uuid()}#Genre:${genreId}`,
+				entityType: `Game`,
+				createdAt: timestamp,
+				updatedAt: timestamp,
+				sourceId: game.id,
+				gsiOnePk: `Genre#${genreId}`,
+			}
+			gameRecords.push(gameRecord)
+		}
+		return gameRecords
+	}
+
 	private async createGames(games: any) {
 		const params = {
 			RequestItems: {
 				[this.table]: games.map((game: any) => {
-					const timestamp = new Date().getTime()
-					const mappedGame = snakeToCamelCase(game)
 					return {
 						PutRequest: {
 							Item: marshall(
-								{
-									...mappedGame,
-									id: uuid(),
-									entityType: `Game`,
-									createdAt: timestamp,
-									updatedAt: timestamp,
-									sourceId: game.id,
-								},
-								{
-									removeUndefinedValues: true
-								},
+								{...game},
+								{removeUndefinedValues: true},
 							)
 						}
 					}
@@ -122,10 +138,5 @@ export class Games {
 		} catch (e) {
 			console.error(e)
 		}
-	}
-
-	private async fetchAndCreateGames(page: number) {
-		const data = await this.rawgClient.getGames(page)
-		await this.createGames(data)
 	}
 }
