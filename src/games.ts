@@ -7,7 +7,7 @@ import { snakeToCamelCase } from "./snakeToCamelCase.js"
 export class Games {
 	private tables = new Map([
 		['dev', 'game-hub-user-api-dev'],
-		['int', 'game-hub-user-api-int'],
+		['prod', 'game-hub-user-api-int'],
 	])
 	private readonly table: string
 	private docClient: DynamoDBClient
@@ -101,16 +101,22 @@ export class Games {
 		const timestamp = new Date().getTime()
 		const camelCasedGame = snakeToCamelCase(game)
 		const gameRecords = []
-		for (let i = 0; i < game.genres.length; i++) {
-			const genreId = game.genres[i].id
+		const gameId = uuid()
+		for (let i = -1; i < game.genres?.length ?? 0; i++) {
 			const gameRecord = {
 				...camelCasedGame,
-				id: `${uuid()}#Genre:${genreId}`,
+				id: gameId,
 				entityType: `Game`,
 				createdAt: timestamp,
 				updatedAt: timestamp,
 				sourceId: game.id,
-				gsiOnePk: `Genre#${genreId}`,
+			}
+			if (i >= 0) {
+				const genreId = game.genres[i].id
+				// @ts-ignore
+				gameRecord.gsiOnePk = `Genre#${genreId}`
+				gameRecord.entityType += `#Genre`
+				gameRecord.id += `#Genre:${genreId}`
 			}
 			gameRecords.push(gameRecord)
 		}
